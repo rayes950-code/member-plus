@@ -269,41 +269,34 @@
             }
         }
 
-        // Phase 6: Shipping methods (mock data — real data from Salla API in production)
-        let shippingMethods = [
-            {id: 'sm-1', name: 'شحن سريع (يوم واحد)', price: '25 SAR', selected: true},
-            {id: 'sm-2', name: 'شحن عادي (3-5 أيام)', price: '15 SAR', selected: true},
-            {id: 'sm-3', name: 'استلام من المتجر', price: 'مجاني', selected: false},
-        ];
-        let shippingStatus = 'loaded'; // loaded | loading | error | empty
+        // Shipping quota per tier
+        let shippingQuota = { silver: 2, gold: 4 };
 
         function renderShippingInline() {
-            if (shippingStatus === 'loading') {
-                return '<div class="shipping-config"><div class="shipping-status shipping-status--loading">جاري تحميل طرق الشحن...</div></div>';
-            }
-            if (shippingStatus === 'error') {
-                return '<div class="shipping-config"><div class="shipping-status shipping-status--error">تعذّر تحميل طرق الشحن — <a href="#" onclick="loadShippingMethods();return false;">إعادة المحاولة</a></div></div>';
-            }
-            if (shippingMethods.length === 0) {
-                return '<div class="shipping-config"><div class="shipping-status shipping-status--empty">لا توجد طرق شحن متاحة في متجرك</div></div>';
-            }
-
-            const selected = shippingMethods.filter(m => m.selected).length;
-            const statusHtml = selected > 0
-                ? `<div class="shipping-status">${selected} طريقة شحن مفعّلة للأعضاء</div>`
-                : `<div class="shipping-status shipping-status--empty">لم يتم اختيار أي طريقة شحن بعد</div>`;
-
             return `
                 <div class="shipping-config">
-                    <div class="shipping-config__title">طرق الشحن المتاحة للأعضاء</div>
-                    ${shippingMethods.map(m => `
-                        <label class="shipping-method">
-                            <input type="checkbox" ${m.selected ? 'checked' : ''} data-shipping="${m.id}">
-                            <span class="shipping-method__name">${m.name}</span>
-                            <span class="shipping-method__price">${m.price}</span>
-                        </label>
-                    `).join('')}
-                    ${statusHtml}
+                    <div class="shipping-config__title">عدد مرات الشحن المجاني شهرياً</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);">
+                        <div class="shipping-method" style="flex-direction:column;align-items:stretch;cursor:default;">
+                            <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2);">
+                                <span class="tier-pill tier-pill--silver">SILVER</span>
+                                <span class="shipping-method__name">الباقة الفضية</span>
+                            </div>
+                            <input type="number" class="input" min="0" value="${shippingQuota.silver}" data-tier="silver"
+                                   style="text-align:center;font-size:var(--font-size-lg);font-weight:var(--font-weight-bold);">
+                            <div style="font-size:var(--font-size-xs);color:var(--color-text-secondary);margin-top:var(--space-1);text-align:center;">مرات / شهر</div>
+                        </div>
+                        <div class="shipping-method" style="flex-direction:column;align-items:stretch;cursor:default;">
+                            <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2);">
+                                <span class="tier-pill tier-pill--gold">GOLD</span>
+                                <span class="shipping-method__name">الباقة الذهبية</span>
+                            </div>
+                            <input type="number" class="input" min="0" value="${shippingQuota.gold}" data-tier="gold"
+                                   style="text-align:center;font-size:var(--font-size-lg);font-weight:var(--font-weight-bold);">
+                            <div style="font-size:var(--font-size-xs);color:var(--color-text-secondary);margin-top:var(--space-1);text-align:center;">مرات / شهر</div>
+                        </div>
+                    </div>
+                    <button class="btn btn--secondary" id="save-shipping" type="button" style="margin-top:var(--space-3);width:100%;">حفظ</button>
                 </div>`;
         }
 
@@ -369,17 +362,18 @@
                 });
             });
 
-            // Phase 6: Bind shipping method checkboxes
-            container.querySelectorAll('[data-shipping]').forEach(cb => {
-                cb.addEventListener('change', () => {
-                    const id = cb.dataset.shipping;
-                    const method = shippingMethods.find(m => m.id === id);
-                    if (method) {
-                        method.selected = cb.checked;
-                        renderBenefits();
-                    }
+            // Shipping quota inputs
+            container.querySelectorAll('[data-tier]').forEach(input => {
+                input.addEventListener('change', () => {
+                    shippingQuota[input.dataset.tier] = Math.max(0, Number(input.value) || 0);
                 });
             });
+            const saveShipBtn = container.querySelector('#save-shipping');
+            if (saveShipBtn) {
+                saveShipBtn.addEventListener('click', () => {
+                    MP.toast(`تم الحفظ — الفضية: ${shippingQuota.silver} مرات · الذهبية: ${shippingQuota.gold} مرات`, 'success');
+                });
+            }
         }
 
         load();
