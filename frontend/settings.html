@@ -155,7 +155,7 @@
         // Profile
         async function loadProfile() {
             try {
-                const p = await MP.api('/api/merchant/profile');
+                const p = await MP.api('/api/v1/merchant/settings');
                 document.getElementById('val-store').textContent = p.store_name || '—';
                 document.getElementById('val-email').textContent = p.merchant_email || '—';
                 document.getElementById('val-storeId').textContent = p.salla_store_id || '—';
@@ -176,8 +176,8 @@
             loadEl.hidden = false; errEl.hidden = true; content.hidden = true;
             try {
                 const [tiersRes, subRes] = await Promise.all([
-                    MP.api('/api/merchant/billing/tiers'),
-                    MP.api('/api/merchant/billing/subscription'),
+                    MP.api('/api/v1/merchant/billing/tiers'),
+                    MP.api('/api/v1/merchant/billing/subscription'),
                 ]);
                 lastBilling = { tiers: tiersRes.tiers, subscription: subRes.subscription };
                 renderBilling(lastBilling);
@@ -233,7 +233,7 @@
         async function subscribeTo(tier, btn) {
             MP.setLoading(btn, true);
             try {
-                const res = await MP.api('/api/merchant/billing/subscribe', {
+                const res = await MP.api('/api/v1/merchant/billing/subscribe', {
                     method: 'POST', body: JSON.stringify({ tier }),
                 });
                 MP.toast('Subscribed', 'success');
@@ -247,7 +247,7 @@
             const btn = document.getElementById('confirm-btn');
             MP.setLoading(btn, true);
             try {
-                const res = await MP.api('/api/merchant/billing/mock-confirm', {
+                const res = await MP.api('/api/v1/merchant/billing/mock-confirm', {
                     method: 'POST', body: JSON.stringify({ subscription_id: id, success: true }),
                 });
                 MP.toast('Activated', 'success');

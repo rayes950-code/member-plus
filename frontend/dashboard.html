@@ -48,12 +48,10 @@
                 <a class="sidebar__link" href="dashboard.html" aria-current="page"><span class="icon">📊</span> لوحة التحكم</a>
                 <a class="sidebar__link" href="plans.html"><span class="icon">🏷️</span> خطط العضوية</a>
                 <a class="sidebar__link" href="members.html"><span class="icon">👥</span> الأعضاء</a>
+                <a class="sidebar__link" href="wizard.html"><span class="icon">🔧</span> إعدادات العضوية</a>
                 <a class="sidebar__link" href="settings.html"><span class="icon">⚙️</span> الإعدادات</a>
             </nav>
-            <div class="sidebar__plan">
-                <div class="sidebar__plan-name" id="plan-name">—</div>
-                <a class="sidebar__plan-upgrade" href="settings.html#billing">ترقية</a>
-            </div>
+            <!-- Plan info removed per user request -->
             <div class="sidebar__footer">
                 <button class="sidebar__link" id="logout-btn" type="button"><span class="icon">⎋</span> تسجيل خروج</button>
             </div>
@@ -106,43 +104,55 @@
                     MP.api('/api/v1/merchant/focus'),
                 ]);
 
+                // First time → go straight to wizard (no dashboard first)
+                if (!ov.setup_completed) {
+                    window.location.href = 'wizard.html?token=' + MP.getToken();
+                    return;
+                }
+
+                // Sidebar — store name
                 document.getElementById('store-name').textContent = ov.store_name || '—';
+
+                // Sidebar — merchant trial with OUR system
+                const statusMap = {trial: 'فترة تجريبية', active: 'نشط', suspended: 'معلّق', cancelled: 'ملغى'};
                 if (ov.status === 'trial' && ov.trial_ends_at) {
                     const days = Math.max(0, Math.ceil((new Date(ov.trial_ends_at) - new Date()) / 86400000));
                     const el = document.getElementById('trial-line');
                     el.textContent = days + ' يوم تجربة متبقي';
                     el.className = 'sidebar__trial sidebar__trial--' + (days >= 3 ? 'ok' : 'warn');
                 } else {
-                    document.getElementById('trial-line').textContent = ov.status === 'active' ? 'نشط' : ov.status;
+                    document.getElementById('trial-line').textContent = statusMap[ov.status] || ov.status;
                 }
-                document.getElementById('plan-name').textContent = (ov.our_plan || 'Starter').charAt(0).toUpperCase() + (ov.our_plan || 'starter').slice(1);
 
                 const token = MP.getToken();
-                const focusStyles = {1:'danger',2:'warning',3:'warning',4:'info',5:'success'};
-                const focusIcons = {gift_not_configured:'🎁',grace_expiry:'⚠️',plan_limit:'📊',zero_members:'👥',all_good:'✅'};
-
                 let html = '';
 
-                // Focus card
-                html += '<div class="focus-card focus-card--' + (focusStyles[focus.priority]||'info') + '">'
-                    + '<div class="focus-card__icon">' + (focusIcons[focus.type]||'📋') + '</div>'
-                    + '<div class="focus-card__body">' + (focus.message_ar||'') + '</div>'
-                    + (focus.action ? '<a class="btn btn--secondary" href="' + focus.action + '.html?token=' + token + '">إجراء</a>' : '')
-                    + '</div>';
+                // Focus card (setup is done — auto-redirect handles incomplete)
+                const focusStyles = {1:'danger',2:'warning',3:'warning',4:'info',5:'success'};
+                const focusIcons = {gift_not_configured:'🎁',grace_expiry:'⚠️',plan_limit:'📊',zero_members:'👥',all_good:'✅'};
+                html += `
+                    <div class="focus-card focus-card--${focusStyles[focus.priority]||'info'}">
+                        <div class="focus-card__icon">${focusIcons[focus.type]||'📋'}</div>
+                        <div class="focus-card__body">${focus.message_ar||''}</div>
+                        ${focus.action ? '<a class="btn btn--secondary" href="' + focus.action + '.html?token=' + token + '" style="white-space:nowrap;">إجراء</a>' : ''}
+                    </div>`;
 
-                if (!ov.setup_completed) {
-                    html += '<div class="focus-card focus-card--warning"><div class="focus-card__icon">🔧</div><div class="focus-card__body">أكمل إعداد برنامج العضوية</div><a class="btn btn--primary" href="wizard.html?token=' + token + '">إكمال الإعداد</a></div>';
-                }
+                // Stats — members count only
+                html += `
+                    <div class="stat-grid" style="margin-top:var(--space-4);">
+                        <div class="stat-card">
+                            <div class="stat-card__label">الأعضاء النشطين</div>
+                            <div class="stat-card__value stat-card__value--purple">${ov.member_count||0}</div>
+                        </div>
+                    </div>`;
 
-                html += '<div class="stat-grid">'
-                    + '<div class="stat-card"><div class="stat-card__label">الأعضاء النشطين</div><div class="stat-card__value stat-card__value--purple">' + (ov.member_count||0) + '</div></div>'
-                    + '<div class="stat-card"><div class="stat-card__label">الحالة</div><div class="stat-card__value">' + (ov.status==='active'?'نشط ✓':ov.status) + '</div></div>'
-                    + '</div>';
-
-                html += '<div class="cta-row" style="margin-top:var(--space-5)">'
-                    + '<a class="btn btn--ghost" href="members.html?token=' + token + '">عرض الأعضاء →</a>'
-                    + '<a class="btn btn--ghost" href="plans.html?token=' + token + '">إدارة الخطط →</a>'
-                    + '</div>';
+                // Quick links
+                html += `
+                    <div class="cta-row" style="margin-top:var(--space-5);">
+                        <a class="btn btn--ghost" href="members.html?token=${token}">عرض الأعضاء →</a>
+                        <a class="btn btn--ghost" href="plans.html?token=${token}">إدارة الخطط →</a>
+                        <a class="btn btn--ghost" href="settings.html?token=${token}">الإعدادات →</a>
+                    </div>`;
 
                 document.getElementById('state-data').innerHTML = html;
                 show('state-data');

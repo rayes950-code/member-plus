@@ -142,7 +142,7 @@
         async function load() {
             show('state-loading');
             try {
-                const { plans: p } = await MP.api('/api/merchant/plans');
+                const { plans: p } = await MP.api('/api/v1/merchant/plans');
                 plans = p.filter(x => x.tier === 'silver' || x.tier === 'gold');
                 if (!plans.length) { show('state-empty'); return; }
                 renderPlans();

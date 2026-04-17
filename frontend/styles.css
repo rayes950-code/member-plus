@@ -537,13 +537,17 @@ a:hover { text-decoration: underline; }
 /* Sidebar app shell */
 .app-shell { display: flex; min-height: 100vh; }
 
+/* PRD §43.5: Arabic=sidebar RIGHT, English=sidebar LEFT.
+   Using inset-inline-end for RTL (Arabic is primary). */
 .sidebar {
-    width: 240px; flex-shrink: 0;
+    width: 260px; flex-shrink: 0;
     background: var(--c-neutral-900); color: var(--color-text-inverse);
     display: flex; flex-direction: column;
-    position: fixed; top: 0; bottom: 0; inset-inline-start: 0;
+    position: fixed; top: 0; bottom: 0;
+    inset-inline-end: 0;  /* RIGHT in RTL, LEFT in LTR */
     z-index: 50;
     transition: transform var(--motion-default);
+    overflow-y: auto;
 }
 .sidebar__brand {
     padding: var(--space-5) var(--space-4);
@@ -577,7 +581,7 @@ a:hover { text-decoration: underline; }
 
 .app-main {
     flex: 1;
-    margin-inline-start: 240px;
+    margin-inline-end: 260px;  /* matches sidebar on the END side */
     min-height: 100vh;
     display: flex; flex-direction: column;
 }
@@ -599,10 +603,10 @@ a:hover { text-decoration: underline; }
 
 /* Mobile sidebar */
 @media (max-width: 860px) {
-    .sidebar { transform: translateX(-100%); }
-    [dir="rtl"] .sidebar { transform: translateX(100%); }
+    .sidebar { transform: translateX(100%); }  /* slides off to the right (RTL) */
+    [dir="ltr"] .sidebar { transform: translateX(-100%); }
     .sidebar.is-open { transform: translateX(0); }
-    .app-main { margin-inline-start: 0; }
+    .app-main { margin-inline-end: 0; }
     .sidebar__toggle { display: block; }
     .sidebar__overlay {
         display: none; position: fixed; inset: 0; z-index: 49;

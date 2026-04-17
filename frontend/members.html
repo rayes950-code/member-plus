@@ -158,7 +158,7 @@
         document.getElementById('copy-member-btn').addEventListener('click', () => copyText(document.getElementById('member-url').textContent));
 
         async function loadStoreId() {
-            try { const p = await MP.api('/api/merchant/profile'); storeId = p.salla_store_id;
+            try { const p = await MP.api('/api/v1/merchant/settings'); storeId = p.salla_store_id;
                 document.getElementById('share-url').textContent = `${location.origin}/customer.html?store=${encodeURIComponent(storeId)}`;
                 document.getElementById('member-url').textContent = `${location.origin}/member.html?store=${encodeURIComponent(storeId)}`;
             } catch(_) {}
@@ -175,7 +175,7 @@
             show('state-loading');
             try {
                 const q = currentFilter ? `?status=${currentFilter}` : '';
-                const { members: rows } = await MP.api('/api/merchant/members' + q);
+                const { members: rows } = await MP.api('/api/v1/merchant/members' + q);
                 members = rows;
                 if (!rows.length) { show('state-empty'); return; }
                 renderMembers(rows); show('state-data');
