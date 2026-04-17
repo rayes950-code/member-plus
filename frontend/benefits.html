@@ -59,6 +59,42 @@
         }
         .benefit-card__cta--hidden { display: none; }
 
+        /* Phase 6: inline shipping config */
+        .shipping-config {
+            margin-top: var(--space-4); padding-top: var(--space-4);
+            border-top: 1px solid var(--color-border);
+        }
+        .shipping-config__title {
+            font-size: var(--font-size-sm); font-weight: var(--font-weight-bold);
+            margin-bottom: var(--space-3);
+        }
+        .shipping-method {
+            display: flex; align-items: center; gap: var(--space-3);
+            padding: var(--space-3); background: var(--color-surface-muted);
+            border-radius: var(--radius-md); margin-bottom: var(--space-2);
+            cursor: pointer; transition: background var(--motion-fast);
+        }
+        .shipping-method:hover { background: var(--c-purple-ll); }
+        .shipping-method input[type="checkbox"] {
+            width: 18px; height: 18px; accent-color: var(--c-purple);
+        }
+        .shipping-method__name { font-size: var(--font-size-sm); flex: 1; }
+        .shipping-method__price { font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+        .shipping-status {
+            font-size: var(--font-size-xs); color: var(--color-text-secondary);
+            margin-top: var(--space-2); padding: var(--space-2);
+            background: var(--c-success-50); border-radius: var(--radius-md);
+        }
+        .shipping-status--empty {
+            background: var(--c-warning-50); color: var(--c-warning-700);
+        }
+        .shipping-status--loading {
+            background: var(--color-surface-muted);
+        }
+        .shipping-status--error {
+            background: var(--c-danger-50); color: var(--c-danger-700);
+        }
+
         .benefit-card__tiers {
             display: flex; gap: var(--space-2); margin-top: var(--space-3);
         }
@@ -174,8 +210,9 @@
                 type: 'quota',
                 tiers: ['silver', 'gold'],
                 alwaysOn: false,
-                ctaLabel: 'إعدادات الشحن',
-                ctaPage: 'shipping',
+                inline: true, // Phase 6: config stays inside this card
+                ctaLabel: null,
+                ctaPage: null,
             },
             {
                 id: 'monthly_gift',
@@ -236,6 +273,44 @@
             }
         }
 
+        // Phase 6: Shipping methods (mock data — real data from Salla API in production)
+        let shippingMethods = [
+            {id: 'sm-1', name: 'شحن سريع (يوم واحد)', price: '25 SAR', selected: true},
+            {id: 'sm-2', name: 'شحن عادي (3-5 أيام)', price: '15 SAR', selected: true},
+            {id: 'sm-3', name: 'استلام من المتجر', price: 'مجاني', selected: false},
+        ];
+        let shippingStatus = 'loaded'; // loaded | loading | error | empty
+
+        function renderShippingInline() {
+            if (shippingStatus === 'loading') {
+                return '<div class="shipping-config"><div class="shipping-status shipping-status--loading">جاري تحميل طرق الشحن...</div></div>';
+            }
+            if (shippingStatus === 'error') {
+                return '<div class="shipping-config"><div class="shipping-status shipping-status--error">تعذّر تحميل طرق الشحن — <a href="#" onclick="loadShippingMethods();return false;">إعادة المحاولة</a></div></div>';
+            }
+            if (shippingMethods.length === 0) {
+                return '<div class="shipping-config"><div class="shipping-status shipping-status--empty">لا توجد طرق شحن متاحة في متجرك</div></div>';
+            }
+
+            const selected = shippingMethods.filter(m => m.selected).length;
+            const statusHtml = selected > 0
+                ? `<div class="shipping-status">${selected} طريقة شحن مفعّلة للأعضاء</div>`
+                : `<div class="shipping-status shipping-status--empty">لم يتم اختيار أي طريقة شحن بعد</div>`;
+
+            return `
+                <div class="shipping-config">
+                    <div class="shipping-config__title">طرق الشحن المتاحة للأعضاء</div>
+                    ${shippingMethods.map(m => `
+                        <label class="shipping-method">
+                            <input type="checkbox" ${m.selected ? 'checked' : ''} data-shipping="${m.id}">
+                            <span class="shipping-method__name">${m.name}</span>
+                            <span class="shipping-method__price">${m.price}</span>
+                        </label>
+                    `).join('')}
+                    ${statusHtml}
+                </div>`;
+        }
+
         function renderBenefits() {
             const container = document.getElementById('benefits-list');
             container.innerHTML = BENEFITS.map(b => {
@@ -265,6 +340,7 @@
                             ${b.tiers.includes('silver') ? '<span class="tier-pill tier-pill--silver">SILVER</span>' : ''}
                             ${b.tiers.includes('gold') ? '<span class="tier-pill tier-pill--gold">GOLD</span>' : ''}
                         </div>
+                        ${b.inline && isOn ? renderShippingInline() : ''}
                         ${b.ctaLabel && isOn ? `
                             <div class="benefit-card__cta">
                                 <a class="btn btn--ghost" href="${b.ctaPage || '#'}" style="font-size:var(--font-size-sm);">${b.ctaLabel} →</a>
@@ -273,6 +349,11 @@
                         ${b.ctaLabel && !isOn ? `
                             <div class="benefit-card__cta">
                                 <span style="font-size:var(--font-size-xs);color:var(--color-text-secondary);">فعّل الميزة للوصول إلى الإعدادات</span>
+                            </div>
+                        ` : ''}
+                        ${b.inline && !isOn ? `
+                            <div class="benefit-card__cta">
+                                <span style="font-size:var(--font-size-xs);color:var(--color-text-secondary);">فعّل الميزة لاختيار طرق الشحن</span>
                             </div>
                         ` : ''}
                         <div class="benefit-card__state ${isOn ? 'benefit-card__state--on' : 'benefit-card__state--off'}" style="margin-top:var(--space-3);">
@@ -289,6 +370,18 @@
                     toggleState[id] = !toggleState[id];
                     renderBenefits();
                     MP.toast(toggleState[id] ? 'تم تفعيل الميزة' : 'تم تعطيل الميزة', 'success');
+                });
+            });
+
+            // Phase 6: Bind shipping method checkboxes
+            container.querySelectorAll('[data-shipping]').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const id = cb.dataset.shipping;
+                    const method = shippingMethods.find(m => m.id === id);
+                    if (method) {
+                        method.selected = cb.checked;
+                        renderBenefits();
+                    }
                 });
             });
         }
