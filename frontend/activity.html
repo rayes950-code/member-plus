@@ -204,6 +204,7 @@
         const memberNames = {m1:'نورة الشمري',m2:'محمد العتيبي',m3:'سارة القحطاني',m4:'عبدالله الدوسري',m5:'ريم المطيري',m6:'فهد الحربي',m7:'هند الزهراني',m8:'خالد السبيعي',m9:'لمى العنزي',m10:'أحمد الغامدي',m11:'منال الشهري',m12:'يوسف البقمي'};
 
         let allEvents = [];
+        let usingMockData = false;
 
         const pager = MP.Paginator({
             perPage: 10,
@@ -230,11 +231,21 @@
 
         async function load() {
             show('state-loading');
+            usingMockData = false;
             try {
-                const [ov, data] = await Promise.all([
-                    MP.api('/api/v1/merchant/overview'),
-                    MP.api('/api/v1/merchant/activity'),
-                ]);
+                let ov, data;
+                try {
+                    [ov, data] = await Promise.all([
+                        MP.api('/api/v1/merchant/overview'),
+                        MP.api('/api/v1/merchant/activity'),
+                    ]);
+                } catch(_) {
+                    const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                    if (!isDev) throw _;
+                    ov = {store_name:'متجر تجريبي', status:'trial', trial_ends_at: new Date(Date.now()+5*86400000).toISOString()};
+                    data = {events: MOCK_EVENTS.slice()};
+                    usingMockData = true;
+                }
 
                 document.getElementById('store-name').textContent = ov.store_name || '—';
                 if (ov.status === 'trial' && ov.trial_ends_at) {
@@ -244,11 +255,29 @@
                     document.getElementById('trial-line').textContent = ov.status === 'active' ? 'نشط' : ov.status;
                 }
 
-                allEvents = (data.events && data.events.length) ? data.events : MOCK_EVENTS;
+                allEvents = (data.events && data.events.length) ? data.events : [];
+
+                // Only use mock data in development when no real events exist
+                const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                if (!allEvents.length && isDev && !usingMockData) {
+                    allEvents = MOCK_EVENTS.slice();
+                    usingMockData = true;
+                }
 
                 if (!allEvents.length) {
                     show('state-empty');
                     return;
+                }
+
+                // Show mock data banner if applicable
+                const bannerEl = document.getElementById('mock-banner');
+                if (bannerEl) bannerEl.remove();
+                if (usingMockData) {
+                    const banner = document.createElement('div');
+                    banner.id = 'mock-banner';
+                    banner.style.cssText = 'background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 16px;margin-bottom:16px;font-size:13px;color:#92400E;text-align:center;';
+                    banner.innerHTML = '⚠️ بيانات تجريبية — ستُستبدل ببيانات حقيقية بعد الربط مع سلة';
+                    document.getElementById('state-data').insertBefore(banner, document.getElementById('state-data').firstChild);
                 }
 
                 applyFilter();

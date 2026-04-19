@@ -159,8 +159,11 @@
         };
         const MOCK_FOCUS = {priority:5, type:'all_good', message_ar:'لا توجد إجراءات مطلوبة اليوم — كل شيء يعمل بسلاسة.', action:null};
 
+        let usingMockData = false;
+
         async function load() {
             show('state-loading');
+            usingMockData = false;
             try {
                 let ov, focus;
                 try {
@@ -168,10 +171,16 @@
                         MP.api('/api/v1/merchant/overview?period=' + currentPeriod),
                         MP.api('/api/v1/merchant/focus'),
                     ]);
-                } catch(_) { ov = MOCK_OV; focus = MOCK_FOCUS; }
+                } catch(_) {
+                    const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                    if (isDev) { ov = MOCK_OV; focus = MOCK_FOCUS; usingMockData = true; }
+                    else { throw _; }
+                }
 
-                if (ov.member_count === 0 && ov.gold_count === undefined) {
-                    ov = {...MOCK_OV, store_name:ov.store_name, status:ov.status, trial_ends_at:ov.trial_ends_at, setup_completed:ov.setup_completed, our_plan:ov.our_plan};
+                if (!usingMockData && ov.member_count === 0 && ov.gold_count === undefined) {
+                    show('state-empty');
+                    document.getElementById('store-name').textContent = ov.store_name || '—';
+                    return;
                 }
 
                 if (!ov.setup_completed) { window.location.href = 'wizard.html?token=' + MP.getToken(); return; }
@@ -244,6 +253,11 @@
             const pLabels = {'7d':'٧ أيام','30d':'٣٠ يوم','3m':'٣ أشهر','12m':'١٢ شهر'};
             const trendArrow = {up:'↑', down:'↓', flat:'—'};
             let h = '';
+
+            /* Mock data banner */
+            if (usingMockData) {
+                h += '<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 16px;margin-bottom:16px;font-size:13px;color:#92400E;text-align:center;">⚠️ بيانات تجريبية — ستُستبدل ببيانات حقيقية بعد الربط مع سلة</div>';
+            }
 
             /* ═══════ SECTION 1: ما يحتاج انتباه اليوم ═══════ */
             const alerts = buildTodayAlerts(ov, focus, token);

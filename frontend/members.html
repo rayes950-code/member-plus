@@ -117,6 +117,7 @@
         MP.requireAuth();
         let allMembers = [];
         let totalMembers = 0;
+        let usingMockData = false;
 
         const pager = MP.Paginator({
             perPage: 10,
@@ -168,10 +169,19 @@
         async function load() {
             show('state-loading');
             try {
-                const [ov, data] = await Promise.all([
-                    MP.api('/api/v1/merchant/overview'),
-                    MP.api('/api/v1/merchant/members'),
-                ]);
+                let ov, data;
+                try {
+                    [ov, data] = await Promise.all([
+                        MP.api('/api/v1/merchant/overview'),
+                        MP.api('/api/v1/merchant/members'),
+                    ]);
+                } catch(_) {
+                    const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                    if (!isDev) throw _;
+                    ov = {store_name:'متجر تجريبي', status:'trial', trial_ends_at: new Date(Date.now()+5*86400000).toISOString()};
+                    data = {members: MOCK_MEMBERS.slice(), total: MOCK_MEMBERS.length};
+                    usingMockData = true;
+                }
 
                 document.getElementById('store-name').textContent = ov.store_name || '—';
                 if (ov.status === 'trial' && ov.trial_ends_at) {
@@ -184,10 +194,14 @@
                 allMembers = data.members || [];
                 totalMembers = data.total || 0;
 
-                // Use mock data for demo when no real members exist
-                if (totalMembers === 0 && allMembers.length === 0) {
+                // Only use mock data in development when no real members exist
+                const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                if (totalMembers === 0 && allMembers.length === 0 && isDev) {
                     allMembers = MOCK_MEMBERS.slice();
                     totalMembers = allMembers.length;
+                    usingMockData = true;
+                } else {
+                    usingMockData = false;
                 }
 
                 // Apply client-side filters
@@ -200,6 +214,17 @@
                 if (filtered.length === 0 && !tier && !status) {
                     show('state-empty');
                     return;
+                }
+
+                // Show mock data banner if applicable
+                const bannerEl = document.getElementById('mock-banner');
+                if (bannerEl) bannerEl.remove();
+                if (usingMockData) {
+                    const banner = document.createElement('div');
+                    banner.id = 'mock-banner';
+                    banner.style.cssText = 'background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 16px;margin-bottom:16px;font-size:13px;color:#92400E;text-align:center;';
+                    banner.innerHTML = '⚠️ بيانات تجريبية — ستُستبدل ببيانات حقيقية بعد الربط مع سلة';
+                    document.getElementById('state-data').insertBefore(banner, document.getElementById('state-data').firstChild);
                 }
 
                 renderStats(filtered);
@@ -314,6 +339,8 @@
                 try {
                     m = await MP.api('/api/v1/merchant/members/' + memberId);
                 } catch(_) {
+                    const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                    if (!isDev) throw _;
                     const mock = MOCK_MEMBERS.find(x => x.id === memberId);
                     if (!mock) throw new Error('not found');
                     m = {...mock, plan: {tier: mock.tier, display_name_ar: mock.tier_name_ar, display_name_en: mock.tier_name_en}, name: mock.name, ...MOCK_DETAIL};

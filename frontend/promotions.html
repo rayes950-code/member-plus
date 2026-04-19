@@ -138,8 +138,9 @@
         function ml(m) { const p = m.split('-'); return M[p[1]] + ' ' + p[0]; }
 
         let currentTab = 'all';
+        let usingMockData = false;
 
-        const gifts = [
+        const MOCK_GIFTS = [
             {id:1, month:'2026-04', desc:'خصم 25% على جميع المنتجات', status:'active', eligible:22, used:8, expires:'2026-04-30'},
             {id:2, month:'2026-05', desc:'خصم 50 ر.س على الطلبات فوق 200', status:'scheduled', eligible:22, used:0, expires:'2026-05-31'},
             {id:3, month:'2026-06', desc:'خصم 30% على العطور', status:'scheduled', eligible:22, used:0, expires:'2026-06-30'},
@@ -151,6 +152,8 @@
             {id:9, month:'2025-10', desc:'خصم 20% على الملابس', status:'expired', eligible:8, used:6, expires:'2025-10-31'},
             {id:10, month:'2025-09', desc:'خصم 10% على المجوهرات', status:'expired', eligible:7, used:3, expires:'2025-09-30'},
         ];
+
+        let gifts = [];
 
         const pager = MP.Paginator({ perPage: 8, onChange(items) { renderRows(items); } });
 
@@ -232,11 +235,51 @@
 
         async function load() {
             show('state-loading');
+            usingMockData = false;
             try {
-                const ov = await MP.api('/api/v1/merchant/overview');
+                let ov, giftData;
+                try {
+                    [ov, giftData] = await Promise.all([
+                        MP.api('/api/v1/merchant/overview'),
+                        MP.api('/api/v1/merchant/gifts'),
+                    ]);
+                } catch(_) {
+                    const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                    if (!isDev) throw _;
+                    ov = {store_name:'متجر تجريبي', status:'trial', trial_ends_at: new Date(Date.now()+5*86400000).toISOString()};
+                    giftData = {gifts: MOCK_GIFTS.slice()};
+                    usingMockData = true;
+                }
+
                 document.getElementById('store-name').textContent = ov.store_name || '—';
                 if (ov.status === 'trial' && ov.trial_ends_at) { const d = Math.max(0, Math.ceil((new Date(ov.trial_ends_at) - new Date()) / 86400000)); document.getElementById('trial-line').textContent = d + ' يوم تجربة متبقي'; }
                 else { document.getElementById('trial-line').textContent = ov.status === 'active' ? 'نشط' : ov.status; }
+
+                gifts = (giftData && giftData.gifts && giftData.gifts.length) ? giftData.gifts : [];
+
+                // Only use mock data in development when no real gifts exist
+                const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                if (!gifts.length && isDev && !usingMockData) {
+                    gifts = MOCK_GIFTS.slice();
+                    usingMockData = true;
+                }
+
+                if (!gifts.length) {
+                    show('state-empty');
+                    return;
+                }
+
+                // Show mock data banner if applicable
+                const bannerEl = document.getElementById('mock-banner');
+                if (bannerEl) bannerEl.remove();
+                if (usingMockData) {
+                    const banner = document.createElement('div');
+                    banner.id = 'mock-banner';
+                    banner.style.cssText = 'background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 16px;margin-bottom:16px;font-size:13px;color:#92400E;text-align:center;';
+                    banner.innerHTML = '⚠️ بيانات تجريبية — ستُستبدل ببيانات حقيقية بعد الربط مع سلة';
+                    document.getElementById('state-data').insertBefore(banner, document.getElementById('state-data').firstChild);
+                }
+
                 renderAll();
                 show('state-data');
             } catch (err) { document.getElementById('err-body').textContent = MP.errorMessage(err, 'ar'); show('state-error'); }
