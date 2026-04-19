@@ -47,6 +47,27 @@ def _as_list(value: str, default: Optional[List[str]] = None) -> List[str]:
 
 
 def load_config() -> PlatformConfig:
+    # Single source of truth for the backend's public base URL (e.g. the ngrok
+    # tunnel in dev, or the deployed domain in prod). Fall back to localhost.
+    app_url = (os.getenv("APP_URL") or "http://localhost:8000").rstrip("/")
+
+    # Derive URL-shaped settings from APP_URL unless explicitly overridden.
+    oauth_redirect = os.getenv("SALLA_OAUTH_REDIRECT_URI") or f"{app_url}/api/oauth/callback"
+    moyasar_callback = os.getenv("MOYASAR_CALLBACK_URL") or f"{app_url}/frontend/plans.html#billing"
+    if not os.getenv("MOYASAR_CALLBACK_URL"):
+        os.environ["MOYASAR_CALLBACK_URL"] = moyasar_callback
+
+    cors_default = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        app_url,
+    ]
+    cors_origins = _as_list(os.getenv("CORS_ORIGINS", ""), default=cors_default)
+    if app_url not in cors_origins:
+        cors_origins.append(app_url)
+
     return PlatformConfig(
         salla_api_key=os.getenv("SALLA_API_KEY", ""),
         salla_webhook_secret=os.getenv("SALLA_WEBHOOK_SECRET", ""),
@@ -54,15 +75,12 @@ def load_config() -> PlatformConfig:
         environment=os.getenv("ENVIRONMENT", "development"),
         jwt_secret=os.getenv("JWT_SECRET", ""),
         encryption_key=os.getenv("ENCRYPTION_KEY", ""),
-        cors_origins=_as_list(
-            os.getenv("CORS_ORIGINS", ""),
-            default=["http://localhost:3000", "http://127.0.0.1:3000"],
-        ),
+        cors_origins=cors_origins,
         salla_client_id=os.getenv("SALLA_CLIENT_ID", ""),
         salla_client_secret=os.getenv("SALLA_CLIENT_SECRET", ""),
         salla_oauth_authorize_url=os.getenv("SALLA_OAUTH_AUTHORIZE_URL", ""),
         salla_oauth_token_url=os.getenv("SALLA_OAUTH_TOKEN_URL", ""),
-        salla_oauth_redirect_uri=os.getenv("SALLA_OAUTH_REDIRECT_URI", ""),
+        salla_oauth_redirect_uri=oauth_redirect,
         salla_store_info_url=os.getenv("SALLA_STORE_INFO_URL", ""),
         email_host=os.getenv("EMAIL_HOST", ""),
         email_port=int(os.getenv("EMAIL_PORT", "0")) if os.getenv("EMAIL_PORT") else None,

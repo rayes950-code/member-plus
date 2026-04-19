@@ -18,7 +18,15 @@ except ImportError:
     print("FastAPI not installed. Install with: pip install fastapi uvicorn")
     sys.exit(1)
 
-sys.path.insert(0, "/Users/hanemrayess/Desktop/HANEMM/backend/src")
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+try:
+    from dotenv import load_dotenv
+    _env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+    load_dotenv(_env_path)
+except ImportError:
+    pass
 
 from config.loader import load_config, validate_config
 from observability.logging import configure_logging, RequestIdMiddleware
@@ -1049,22 +1057,38 @@ async def register_interest(store_id: str, payload: dict = Body(...)):
 # OAuth Access — exchange permanent token for session
 # ---------------------------------------------------------------------------
 @app.get("/api/v1/access")
-async def access_redirect(request: Request, token: str = Query(...), goto: str = Query("dashboard")):
-    """PRD Appendix B: Exchange permanent access token for session cookie."""
+async def access_redirect(
+    request: Request,
+    token: str = Query(default=""),
+    store_id: str = Query(default=""),
+    merchant: str = Query(default=""),
+    goto: str = Query(default="dashboard"),
+):
+    """Salla app-callback entry: look up merchant by permanent token OR store_id,
+    create a session cookie, and redirect into the frontend dashboard."""
     from auth.session import create_session
     from fastapi.responses import RedirectResponse
+
+    logger.info("access_redirect params: %s", dict(request.query_params))
 
     db = _db_session()
     try:
         from database.models import Merchant
-        merchant = db.query(Merchant).filter(
-            Merchant.permanent_access_token == token
-        ).first()
-        if not merchant:
-            raise HTTPException(401, "Invalid access token")
+        row = None
+        if token:
+            row = db.query(Merchant).filter(Merchant.permanent_access_token == token).first()
+        if not row:
+            store_hint = store_id or merchant
+            if store_hint:
+                try:
+                    row = db.query(Merchant).filter(Merchant.salla_store_id == int(store_hint)).first()
+                except ValueError:
+                    row = None
+        if not row:
+            raise HTTPException(401, "Invalid access token — is the app installed on this store?")
 
         response = RedirectResponse(url=f"/frontend/{goto}.html")
-        create_session(response, merchant.id)
+        create_session(response, row.id)
         return response
     finally:
         db.close()

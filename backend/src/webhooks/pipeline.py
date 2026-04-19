@@ -181,6 +181,7 @@ def _handle_app_authorize(session, payload) -> Dict:
     from database.models import Merchant, OAuthToken
     from auth.crypto import encrypt
     from datetime import timedelta
+    import secrets
 
     data = payload.get("data") or {}
 
@@ -201,6 +202,8 @@ def _handle_app_authorize(session, payload) -> Dict:
         existing.status = "trial"
         existing.access_token = encrypt(access_tok)
         existing.refresh_token = encrypt(refresh_tok)
+        if not existing.permanent_access_token:
+            existing.permanent_access_token = secrets.token_urlsafe(32)
         _upsert_oauth_token(session, existing.id, access_tok, refresh_tok, token_scope, expires_in)
         session.commit()
         return {"handled": True, "action": "merchant-reactivated", "merchant_id": existing.id}
@@ -210,6 +213,7 @@ def _handle_app_authorize(session, payload) -> Dict:
         salla_store_id=int(salla_store_id),
         access_token=encrypt(access_tok),
         refresh_token=encrypt(refresh_tok),
+        permanent_access_token=secrets.token_urlsafe(32),
         store_name="",
         status="trial",
         trial_ends_at=now + timedelta(days=7),
