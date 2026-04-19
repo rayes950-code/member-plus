@@ -1,32 +1,70 @@
+version: '3.8'
+
 services:
-  backend:
-    build:
-      context: ./backend
-    image: memberplus-backend:local
-    env_file:
-      - ./backend/.env
-    environment:
-      # Override any defaults from .env here for docker networking.
-      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/memberplus.db}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-    volumes:
-      - memberplus-data:/data
+  app:
+    build: .
     ports:
       - "8000:8000"
+    environment:
+      # === REQUIRED: Get these from Salla Partner Portal ===
+      - SALLA_API_KEY=${SALLA_API_KEY}
+      - SALLA_CLIENT_ID=${SALLA_CLIENT_ID}
+      - SALLA_CLIENT_SECRET=${SALLA_CLIENT_SECRET}
+      - SALLA_WEBHOOK_SECRET=${SALLA_WEBHOOK_SECRET}
+      - SALLA_OAUTH_TOKEN_URL=https://accounts.salla.sa/oauth2/token
+
+      # === Database ===
+      - DATABASE_URL=postgresql://memberplus:${DB_PASSWORD:-memberplus123}@postgres:5432/memberplus
+
+      # === Security ===
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-change-me-in-production}
+
+      # === Environment ===
+      - ENVIRONMENT=production
+      - CORS_ORIGINS=*
+
+      # === Email (optional — uses mock if not set) ===
+      - EMAIL_HOST=${EMAIL_HOST:-}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_USER=${EMAIL_USER:-}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
+      - EMAIL_FROM=${EMAIL_FROM:-Member Plus <no-reply@memberplus.sa>}
+      - EMAIL_USE_TLS=true
+      - EMAIL_USE_SSL=false
+
+      # === Scheduler ===
+      - SCHEDULER_ENABLED=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
-  frontend:
-    image: python:3.11-slim
-    working_dir: /app
-    command: ["python", "-m", "http.server", "3000"]
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=memberplus
+      - POSTGRES_USER=memberplus
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-memberplus123}
     volumes:
-      - ./frontend:/app:ro
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memberplus"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
 volumes:
-  memberplus-data:
+  postgres_data:
