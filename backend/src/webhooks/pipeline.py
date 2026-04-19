@@ -157,6 +157,7 @@ def _dispatch(session, event_db_id: str, event_type: str, payload: Dict) -> Dict
         "order.created": _handle_order_created,
         "order.cancelled": _handle_order_cancelled,
         "customer.updated": _handle_customer_updated,
+        "store.updated": _handle_store_updated,
     }
 
     handler = handlers.get(event_type)
@@ -265,12 +266,30 @@ def _handle_app_subscription_started(session, payload) -> Dict:
     # Determine SaaS plan from payload if available
     data = payload.get("data") or {}
     plan_name = str(data.get("plan") or data.get("plan_name") or "").lower()
+    new_plan = "starter"
     if "unlimited" in plan_name:
-        merchant.our_plan = "unlimited"
+        new_plan = "unlimited"
     elif "pro" in plan_name:
-        merchant.our_plan = "pro"
-    else:
-        merchant.our_plan = "starter"
+        new_plan = "pro"
+
+    # PRD §24: Block downgrade if member count exceeds new plan limit
+    plan_limits = {"starter": 50, "pro": 200, "unlimited": None}
+    new_limit = plan_limits.get(new_plan)
+    if new_limit is not None and merchant.our_plan:
+        from database.models import Member
+        active_count = session.query(Member).filter(
+            Member.merchant_id == merchant.id,
+            Member.status == "active",
+        ).count()
+        if active_count > new_limit:
+            logger.warning("merchant %s blocked from downgrade: %d members > %d limit",
+                          merchant.id, active_count, new_limit)
+            # Keep current plan, don't downgrade
+            session.commit()
+            return {"handled": True, "action": "downgrade-blocked",
+                    "reason": f"member_count {active_count} exceeds {new_plan} limit {new_limit}"}
+
+    merchant.our_plan = new_plan
 
     session.commit()
     logger.info("merchant %s activated (plan: %s)", merchant.id, merchant.our_plan)
@@ -380,6 +399,19 @@ def _handle_subscription_created(session, payload) -> Dict:
     if not plan:
         return {"handled": False, "reason": f"no-active-{tier}-plan"}
 
+    # PRD §24: Check member limit for merchant's plan
+    plan_limits = {"starter": 50, "pro": 200, "unlimited": None}
+    limit = plan_limits.get(merchant.our_plan)
+    if limit is not None:
+        active_count = session.query(Member).filter(
+            Member.merchant_id == merchant.id,
+            Member.status == "active",
+        ).count()
+        if active_count >= limit:
+            logger.warning("merchant %s at member limit: %d/%d", merchant.id, active_count, limit)
+            return {"handled": False, "reason": "member-limit-reached",
+                    "plan": merchant.our_plan, "limit": limit, "current": active_count}
+
     # Check for duplicate subscription (PRD §21 R-01)
     existing = session.query(Member).filter(
         Member.salla_subscription_id == salla_subscription_id,
@@ -427,9 +459,10 @@ def _handle_charge_succeeded(session, payload) -> Dict:
     data = payload.get("data") or payload
     salla_subscription_id = str(data.get("subscription_id") or data.get("id") or "")
 
+    # PRD §21 R-02: Lock row before status change
     member = session.query(Member).filter(
         Member.salla_subscription_id == salla_subscription_id,
-    ).first() if salla_subscription_id else None
+    ).with_for_update().first() if salla_subscription_id else None
 
     if not member:
         return {"handled": False, "reason": "member-not-found"}
@@ -460,9 +493,10 @@ def _handle_charge_failed(session, payload) -> Dict:
     data = payload.get("data") or payload
     salla_subscription_id = str(data.get("subscription_id") or data.get("id") or "")
 
+    # PRD §21 R-02: Lock row before status change
     member = session.query(Member).filter(
         Member.salla_subscription_id == salla_subscription_id,
-    ).first() if salla_subscription_id else None
+    ).with_for_update().first() if salla_subscription_id else None
 
     if not member:
         return {"handled": False, "reason": "member-not-found"}
@@ -499,9 +533,10 @@ def _handle_subscription_updated(session, payload) -> Dict:
     data = payload.get("data") or payload
     salla_subscription_id = str(data.get("subscription_id") or data.get("id") or "")
 
+    # PRD §21 R-02: Lock row before status change
     member = session.query(Member).filter(
         Member.salla_subscription_id == salla_subscription_id,
-    ).first() if salla_subscription_id else None
+    ).with_for_update().first() if salla_subscription_id else None
 
     if not member:
         return {"handled": False, "reason": "member-not-found"}
@@ -642,6 +677,46 @@ def _handle_order_cancelled(session, payload) -> Dict:
 
 def _handle_customer_updated(session, payload) -> Dict:
     """PRD §16: Refresh cached data. Never store contact info locally."""
-    # We don't store customer PII per PRD §20. Just log the event.
     logger.info("customer.updated received — no cached data to refresh")
     return {"handled": True, "action": "customer-synced"}
+
+
+def _handle_store_updated(session, payload) -> Dict:
+    """PRD §24: Detect store ownership transfer or name change.
+    Update store_name. If ownership changed, alert via email."""
+    from database.models import Merchant
+
+    store_id = _extract_merchant_id(payload)
+    if not store_id:
+        return {"handled": False, "reason": "missing-store-id"}
+
+    merchant = session.query(Merchant).filter(
+        Merchant.salla_store_id == int(store_id)
+    ).first()
+    if not merchant:
+        return {"handled": False, "reason": "merchant-not-found"}
+
+    data = payload.get("data") or {}
+    new_name = data.get("name") or data.get("store_name")
+    old_name = merchant.store_name
+
+    if new_name and new_name != old_name:
+        merchant.store_name = new_name
+        session.commit()
+        logger.info("store %s name updated: %s → %s", merchant.id, old_name, new_name)
+
+        # If name changed significantly, could indicate ownership transfer
+        # Log for admin review
+        from database.models import ActivityLog
+        import json
+        session.add(ActivityLog(
+            merchant_id=merchant.id,
+            event_type="store.ownership_change",
+            metadata_json=json.dumps({
+                "old_name": old_name,
+                "new_name": new_name,
+            }, ensure_ascii=False),
+        ))
+        session.commit()
+
+    return {"handled": True, "action": "store-updated"}

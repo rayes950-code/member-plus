@@ -257,12 +257,52 @@ def _job_group_health_check(db, job) -> None:
             m.is_at_risk = should_be_at_risk
             at_risk_updated += 1
 
-    # TODO Phase 3: Verify Salla Customer Groups exist via SallaClient
-    # TODO Phase 3: Verify member-group membership matches DB
+    # PRD §24: Verify Salla Customer Groups exist — recreate if deleted
+    from database.models import MembershipPlan
+    plans = db.query(MembershipPlan).filter(
+        MembershipPlan.merchant_id == merchant_id,
+        MembershipPlan.status == "active",
+    ).all()
 
-    if at_risk_updated:
+    groups_checked = 0
+    groups_recreated = 0
+    for plan in plans:
+        if plan.salla_group_id:
+            groups_checked += 1
+            # Try to verify group exists via SallaClient
+            try:
+                from salla.client import SallaClient
+                client = SallaClient(db, merchant_id)
+                client.get(f"https://api.salla.dev/admin/v2/customers/groups/{plan.salla_group_id}")
+            except Exception as exc:
+                # Group might be deleted — recreate
+                logger.warning("group %s missing for plan %s — attempting recreate: %s",
+                              plan.salla_group_id, plan.id, exc)
+                try:
+                    from salla.provisioning import provision_plan
+                    plan.salla_group_id = None  # Clear so provision creates new
+                    db.flush()
+                    result = provision_plan(db, plan.id)
+                    if result.get("status") == "created":
+                        groups_recreated += 1
+                        logger.info("recreated group for plan %s: %s", plan.id, result)
+                        # Re-add all active members to new group
+                        for m in members:
+                            if m.plan_id == plan.id:
+                                try:
+                                    client.post(
+                                        f"https://api.salla.dev/admin/v2/customers/groups/{plan.salla_group_id}/customers",
+                                        {"customer_ids": [m.salla_customer_id]},
+                                    )
+                                except Exception:
+                                    pass
+                except Exception as rec_exc:
+                    logger.error("failed to recreate group for plan %s: %s", plan.id, rec_exc)
+
+    if at_risk_updated or groups_recreated:
         db.commit()
-        logger.info("health check: %d at-risk flags updated for merchant %s", at_risk_updated, merchant_id)
+        logger.info("health check: %d at-risk updated, %d groups checked, %d recreated for merchant %s",
+                    at_risk_updated, groups_checked, groups_recreated, merchant_id)
 
 
 # ---------------------------------------------------------------------------

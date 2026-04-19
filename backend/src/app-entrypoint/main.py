@@ -81,6 +81,51 @@ app.add_middleware(
 )
 
 
+# PRD §20: Rate limiting — 100 req/min per IP for merchant API, 3/hour for interest
+import time as _time
+from collections import defaultdict as _defaultdict
+_rate_buckets = _defaultdict(list)  # ip → [timestamps]
+
+class RateLimitMiddleware:
+    """Simple in-memory rate limiter. Production should use Redis."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        client = scope.get("client", ("0.0.0.0",))[0]
+
+        # Interest endpoint: 3 per hour per IP
+        if "/interest" in path and scope.get("method") == "POST":
+            if not self._check(client + ":interest", max_requests=3, window=3600):
+                response = JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
+                await response(scope, receive, send)
+                return
+
+        # Merchant API: 100 per minute per IP
+        elif "/api/v1/merchant/" in path:
+            if not self._check(client + ":api", max_requests=100, window=60):
+                response = JSONResponse({"detail": "Rate limit exceeded"}, status_code=429)
+                await response(scope, receive, send)
+                return
+
+        await self.app(scope, receive, send)
+
+    def _check(self, key: str, max_requests: int, window: int) -> bool:
+        now = _time.time()
+        _rate_buckets[key] = [t for t in _rate_buckets[key] if t > now - window]
+        if len(_rate_buckets[key]) >= max_requests:
+            return False
+        _rate_buckets[key].append(now)
+        return True
+
+app.add_middleware(RateLimitMiddleware)
+
+
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
