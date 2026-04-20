@@ -226,7 +226,8 @@ def main():
         for _ in range(40):
             m = random.choice(members)
             events.append((
-                random.choice(["benefit.discount_applied", "benefit.shipping_used", "benefit.gift_used"]),
+                random.choice(["discount_applied", "shipping.used", "gift.redeemed",
+                               "charge.succeeded", "gift.generated"]),
                 m.id,
                 now - timedelta(days=random.randint(0, 60), hours=random.randint(0, 23)),
             ))
