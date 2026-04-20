@@ -1,0 +1,54 @@
+# Render Blueprint — Member Plus demo deployment
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Provisions:
+#   - 1 web service (FastAPI from Dockerfile, serves /api + /frontend + /legal)
+#   - 1 free Postgres database (256 MB, expires after 30 days unless upgraded)
+#
+# After deploy, the entrypoint script auto-creates the demo merchant + seeds
+# 23 members / 9 months of gifts so the public URL is immediately demo-able.
+
+databases:
+  - name: memberplus-db
+    plan: free
+    databaseName: memberplus
+    user: memberplus
+
+services:
+  - type: web
+    name: memberplus
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: memberplus-db
+          property: connectionString
+      - key: ENVIRONMENT
+        value: development          # keeps the demo endpoint enabled
+      - key: SEED_ON_STARTUP
+        value: "true"
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: SCHEDULER_ENABLED
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      # The Salla webhooks are unused for the demo — set placeholders so config
+      # validation passes. Replace these in the Render dashboard before going live.
+      - key: SALLA_API_KEY
+        value: "demo-placeholder"
+      - key: SALLA_CLIENT_ID
+        value: "demo-placeholder"
+      - key: SALLA_CLIENT_SECRET
+        value: "demo-placeholder"
+      - key: SALLA_WEBHOOK_SECRET
+        value: "demo-placeholder"
+      - key: SALLA_OAUTH_TOKEN_URL
+        value: "https://accounts.salla.sa/oauth2/token"

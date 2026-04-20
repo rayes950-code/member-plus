@@ -49,8 +49,19 @@ def main():
     try:
         merchant = db.query(Merchant).filter(Merchant.salla_store_id == DEMO_STORE_ID).first()
         if not merchant:
-            print("Demo merchant not found. POST /api/v1/auth/demo first.")
-            return
+            from auth.crypto import encrypt
+            print("Creating demo merchant (first run)...")
+            merchant = Merchant(
+                salla_store_id=DEMO_STORE_ID,
+                access_token=encrypt("demo-tok"),
+                refresh_token=encrypt("demo-ref"),
+                store_name="متجر تجريبي",
+                status="trial",
+                trial_ends_at=datetime.utcnow() + timedelta(days=7),
+            )
+            db.add(merchant)
+            db.commit()
+            db.refresh(merchant)
 
         mid = merchant.id
         print(f"Seeding merchant {mid} ({merchant.store_name})")

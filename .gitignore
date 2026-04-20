@@ -26,3 +26,9 @@ build/
 # Member Plus specific
 backend/memberplus_*.db
 backend/src/app-entrypoint/memberplus_*.db
+
+# Playwright audit artefacts (regenerate with browser_take_screenshot)
+.playwright-mcp/
+*.png
+!frontend/assets/**
+!legal/**

@@ -18,7 +18,8 @@ except ImportError:
     print("FastAPI not installed. Install with: pip install fastapi uvicorn")
     sys.exit(1)
 
-sys.path.insert(0, "/Users/hanemrayess/Desktop/HANEMM/backend/src")
+import os as _os_path
+sys.path.insert(0, _os_path.path.abspath(_os_path.path.join(_os_path.path.dirname(__file__), "..")))
 
 from config.loader import load_config, validate_config
 from observability.logging import configure_logging, RequestIdMiddleware
